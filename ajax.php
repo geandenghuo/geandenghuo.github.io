@@ -1,8 +1,7 @@
 <?php
-include 'if/common.php';
 
+include '../if/common.php';
 @header('Content-Type: application/json; charset=UTF-8');
-
 if ($_SERVER['HTTP_X_REQUESTED_WITH'] == 'XMLHttpRequest') {
 
 } else {
@@ -15,87 +14,203 @@ if(empty($_GET['act'])){
 }
 
 switch ($act){
-    //异步获取商品<!-- 小勋资源网：精品资源分享网www.xmxun.cn -->
-    case 'selgo': 
-       $select = "<option>请选择商品</option>";
-        $tpID = _if($_POST['tyid']);
-        if($tpID == ""){
-            exit('{"code":0,"msg":"'.$select.'"}');
-        }
-        $sql = "select * from if_goods where  state =1 and tpId = ".$tpID." ORDER BY sotr desc";
-        $res = $DB->query($sql);
-       $i=1;
-        while ($row =$DB->fetch($res)){
-            $c = $DB->count("SELECT COUNT(id) from if_km  where stat = 0 and gid =".$row['id']);
-          $select.="<option id='".$row['id']."' imgs='".$row['imgs']."' value='"._if2($row['gName'])."'kc='".$c."'  title='".$row['price']."' alt = '"._if2($row['gInfo'])."'>"._if2($row['gName'])."</option>";
-         
-        }
-       exit('{"code":0,"msg":"'.$select.'"}');
-        break; 
-     //创建订单
-     case 'create':
-         $out_trade_no = $_POST['out_trade_no'];
-         $gid = _if($_POST['gid']);
-         $money = _if($_POST['money']);
-         $rel = _if($_POST['rel']);
-         $type = _if($_POST['type']);
-         $number = intval($_POST['number']);
-         if($number <= 0){
-             exit('{"code":-1,"msg":"no"}');
-         }
-         
-         $checkcqq_row = $DB->get_row("select * from  if_blacklist where data = '$rel' and type = 1");
-         if($checkcqq_row){
-             exit('{"code":-1,"msg":"当前QQ已被列入本站黑名单"}');
-         }
-         $sql = "insert into if_order(out_trade_no,gid,money,rel,benTime,type,number) 
-         values('{$out_trade_no}',{$gid},{$money},'{$rel}',now(),'{$type}',{$number})";
-         $b = $DB->query($sql);
-         if($b > 0){
-             wsyslog("创建订单成功!","IP:".real_ip().",城市:".get_ip_city());
-             exit('{"code":0,"msg":"ok"}');
-         }else{
-             exit('{"code":-1,"msg":"数据库出错了~~~"}');
-         }
-         ;
-     
-     break;
-     //查询卡密库存
-     case 'selKm':
-         $gid = _if($_POST['gid']);
-         $sql = "select * from if_km where stat = 0 and gid = ".$gid;
-         $res =$DB->query($sql);
-         if($row =  $DB->fetch($res)){
-             exit('{"code":0,"msg":"ok"}');
-         }else{
-             exit('{"code":-1,"msg":"no"}');
-         }
-         ;break;
-     //用户提取卡密
-     case 'tqKm':
-         $t = _if($_POST['t']);
-         $sql = "select * from if_km
-         where out_trade_no ='{$t}' or trade_no = '{$t}' or rel = '{$t}'
-         ORDER BY endTime desc
-         limit 1";
-        $res =$DB->query($sql);
-        $ginfo = "";
-        if($row =  $DB->fetch($res)){
-            $sql2 = "select * from if_goods where id =".$row['gid'];
-            $res2 = $DB->query($sql2);
-            $row2 = $DB->fetch($res2);
-            $ginfo ="<tr><td id='td1'>".$row2['gName']."</td><td id='td2'>".$row['out_trade_no']."</td><td id='td3'>".$row['endTime']."</td><td id='td4'>".$row['km']."</td></tr>";
-            exit('{"code":0,"msg":"'.$ginfo.'"}');
-           
+    //验证登陆
+    case 'checkLogin':
+        $user = _if($_POST['user']);
+        $pass = daddslashes($_POST['pass']); 
+        $pass = md5($pass.$password_hash);
+        if($user == $conf['admin'] &&  $pass== $conf['pwd']){
+            wsyslog("登陆后台成功!","登陆IP:".real_ip().",城市:".get_ip_city());
+            $session=md5($user.$pass.$password_hash);
+            $token=authcode("{$user}\t{$session}", 'ENCODE', SYS_KEY);
+            setcookie("admin_token", $token, time() + 604800);
+            exit('{"code":1,"msg":"登陆成功"}');
         }else{
-            exit('{"code":-1,"msg":"无本条记录"}');
+            wsyslog("登陆后台失败!","登陆IP:".real_ip().",城市:".get_ip_city()."　|　用户名:".$user.",密码:".$_POST['pass']);
+            exit('{"code":0,"msg":"用户名或密码错误"}');
         }
-         ;break;
-     
-
-    default: 
-        exit('{"code":-2,"msg":"NOT"}');
-        break;
+        ;break;
+        //删除订单
+    case 'delOrd': 
+        $id = _if($_POST['id']);
+        $sql = "delete from if_order where id = ".$id;
+        $b = $DB->query($sql);
+        if($b > 0){
+            exit('{"code":1,"msg":"删除成功"}');
+        }else{
+            exit('{"code":-1,"msg":"删除失败"}');
+        }
+        ;break;
+       //删除卡密
+    case 'delKm': 
+            $id = _if($_POST['id']);
+            $sql = "delete from if_km where id = ".$id;
+            $b = $DB->query($sql);
+            if($b > 0){
+                exit('{"code":1,"msg":"删除成功"}');
+            }else{
+                exit('{"code":-1,"msg":"删除失败"}');
+            }
+            ;break;
+            //删除商品
+     case 'delSp':
+                $id = _if($_POST['id']);
+                $sql = "delete from if_goods where id = ".$id;
+                $b = $DB->query($sql);
+                if($b > 0){
+                    $sql = "delete from if_km where gid = ".$id;
+                   $DB->query($sql);
+                    exit('{"code":1,"msg":"删除成功"}');
+                }else{
+                    exit('{"code":-1,"msg":"删除失败"}');
+                }
+                ;break;
+     case 'addSp':
+                $tpId = _if($_POST['tid']);
+                $gName = daddslashes($_POST['gName']);
+                $price = _if($_POST['price']);
+                $state = _if($_POST['state']);
+                $gInfo = daddslashes($_POST['gInfo']);
+                $sql = "insert into if_goods(gName,gInfo,tpId,price,state) values('{$gName}','$gInfo',{$tpId},{$price},{$state})";
+                $b = $DB->query($sql);
+               
+                if($b > 0){
+                    exit('{"code":1,"msg":"添加成功"}');
+                }else{
+                    exit('{"code":-1,"msg":"添加失败"}');
+                }
+               ;break;
+   case 'delType':
+       $id = _if($_POST['tid']);
+       $sql = "select * from if_goods where tpid = ".$id;
+       $res = $DB->query($sql);
+       if($row = $DB->fetch($res)){
+           exit('{"code":-1,"msg":"该分类下面还有商品！请先删除商品后再删除分类！"}');
+       }
+       $sql = "delete from if_type where id =".$id;
+       $b =  $DB->query($sql);
+       if($b > 0){
+           exit('{"code":1,"msg":"删除成功"}');
+       }else{
+           exit('{"code":-1,"msg":"删除失败"}');
+       }
+       ;break;    
+   case 'AddType':
+       $tName = daddslashes($_POST['tName']);
+       $sql = "insert into if_type(tName) values('".$tName."')";
+       $b =  $DB->query($sql);
+       if($b > 0){
+           exit('{"code":1,"msg":"添加成功"}');
+       }else{
+           exit('{"code":-1,"msg":"添加失败"}');
+       }
+       ;break;
+   case 'upWeb':
+       $i = 0;
+       foreach ($_POST as $k => $value) {
+           $value=daddslashes($value);
+           $DB->query("insert into if_config set `if_k`='{$k}',`if_v`='{$value}' on duplicate key update `if_v`='{$value}'");
+       }
+      
+       if(1 > 0){
+           wsyslog("修改网站信息成功!","IP:".real_ip().",城市:".get_ip_city());
+           exit('{"code":1,"msg":"修改成功"}');
+       }else{
+           wsyslog("修改网站信息失败!","IP:".real_ip().",城市:".get_ip_city());
+           exit('{"code":-1,"msg":"修改失败"}');
+       }
+       ;break;
+       
+   case 'upEpay':
+        $i = 0;
+       foreach ($_POST as $k => $value) {
+           $i++;
+           $value=daddslashes($value);
+           $DB->query("insert into if_config set `if_k`='{$k}',`if_v`='{$value}' on duplicate key update `if_v`='{$value}'");
+       }
+       if($i > 0){
+           wsyslog("修改商户信息成功!","IP:".real_ip().",城市:".get_ip_city());
+           exit('{"code":1,"msg":"修改成功"}');
+       }else{
+           wsyslog("修改商户信息失败!","IP:".real_ip().",城市:".get_ip_city());
+           exit('{"code":-1,"msg":"修改失败"}');
+       }
+       ;break;
+   case 'upEmail':
+     $i = 0;
+       foreach ($_POST as $k => $value) {
+           $i++;
+           $value=daddslashes($value);
+           $DB->query("insert into if_config set `if_k`='{$k}',`if_v`='{$value}' on duplicate key update `if_v`='{$value}'");
+       }
+       if($i > 0){
+           exit('{"code":1,"msg":"修改成功"}');
+       }else{
+           exit('{"code":-1,"msg":"修改失败"}');
+       }
+       ;break;
+  
+   case 'upAdmin':
+       $u= _if($_POST['u']);//用户名
+       $p = _if($_POST['p']);//密码
+       $b = $DB->query("update `if_config` set `if_v` ='{$p}' where `if_k`='pwd'");
+       if($b > 0){
+           wsyslog("修改账号密码成功!","IP:".real_ip().",城市:".get_ip_city());
+           exit('{"code":1,"msg":"修改成功"}');
+       }else{
+           wsyslog("修改账号密码失败!","IP:".real_ip().",城市:".get_ip_city());
+           exit('{"code":-1,"msg":"修改失败"}');
+       }
+       ;break;
+   case 'det_allkm':
+       $sql = "delete from if_km";
+       $b =  $DB->query($sql);
+       if($b > 0){
+           exit('{"code":1,"msg":"删除成功"}');
+       }else{
+           exit('{"code":-1,"msg":"删除失败"}');
+       }
+       ;break;
+   case 'det_ykm':
+       $sql = "delete from if_km where stat = 1";
+       $b = $DB->query($sql);
+       if($b > 0){
+           exit('{"code":1,"msg":"删除成功"}');
+       }else{
+           exit('{"code":-1,"msg":"删除失败"}');
+       }
+       ;break;
+   case 'det_allOder':
+       $sql = "delete from if_order";
+       $b =  $DB->query($sql);
+       if($b > 0){
+           exit('{"code":1,"msg":"删除成功"}');
+       }else{
+           exit('{"code":-1,"msg":"删除失败"}');
+       }
+       ;break;
+   case 'c':
+           exit('{"code":1}');
+           ;break;
+   case 'det_wOder':
+           $sql = "delete from if_order where sta = 0";
+           $b =  $DB->query($sql);
+           if($b > 0){
+               exit('{"code":1,"msg":"删除成功"}');
+           }else{
+               exit('{"code":-1,"msg":"删除失败"}');
+           }
+           ;break;
+    case 'detlog':
+               $sql = "delete from if_syslog";
+               $b =  $DB->query($sql);
+               if($b > 0){
+                   exit('{"code":1,"msg":"删除成功"}');
+               }else{
+                   exit('{"code":-1,"msg":"删除失败"}');
+               }
+               ;break;
+    default:;break;
 }
 
 
